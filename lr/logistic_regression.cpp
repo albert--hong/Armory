@@ -112,8 +112,12 @@ void discreteLR(vector<vector<int> > &X, vector<double> &y, vector<double> &w)
             xs = xe;
             xe = xe + batchSize;
             deltaLoss = deltaLoss / static_cast<double>(w.size());
-            std::cout << "training minibatch done. delta loss = " << deltaLoss << std::endl;
-            if (deltaLoss < epsilon) {
+            if (batchIter % 100 == 0)
+            {
+                std::cout << "training minibatch done. delta loss = " << deltaLoss << std::endl;
+            }
+            if (deltaLoss < epsilon)
+            {
                 return;
             }
             deltaLoss = 0.0;
@@ -151,7 +155,7 @@ int main(int argc, char *argv[])
         return -1;
     }
     std::map<std::string, int> features;
-    std::vector<std::vector<int> > X;
+    std::vector<std::vector<int>> X;
     std::vector<double> y;
     int maxFeaIdx = 0;
     loadFeatures(argv[1], features, maxFeaIdx);
@@ -160,7 +164,8 @@ int main(int argc, char *argv[])
     // 增加 Bias 特征
     int baisFeaIdx = maxFeaIdx + 1;
     features.insert(std::make_pair("Bias", baisFeaIdx));
-    for (int xi = 0; xi < X.size(); ++xi) {
+    for (int xi = 0; xi < X.size(); ++xi)
+    {
         X[xi].push_back(baisFeaIdx);
     }
 
