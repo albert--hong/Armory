@@ -83,7 +83,7 @@ void loadFeatures(const std::string &pathFeatures, std::map<std::string, int> &f
     }
 }
 
-void loadInstances(std::string pathInstances, std::vector<std::set<int> > &X, std::vector<double> &y)
+void loadInstances(std::string pathInstances, std::vector<std::vector<int> > &X, std::vector<double> &y)
 {
     ifstream in(pathInstances.c_str());
     std::string line;
@@ -100,12 +100,12 @@ void loadInstances(std::string pathInstances, std::vector<std::set<int> > &X, st
                 continue;
             double yi = atof(fields[0].c_str());
             y.push_back(yi);
-            std::set<int> xi;
+            std::vector<int> xi;
             std::vector<std::string> xiFields;
             splitString(fields[1], ",", xiFields);
             for (int i = 0; i < xiFields.size(); ++i)
             {
-                xi.insert(atoi(xiFields[i].c_str()));
+                xi.push_back(atoi(xiFields[i].c_str()));
             }
             X.push_back(xi);
         }
