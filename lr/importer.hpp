@@ -60,7 +60,8 @@ char* loadFile(const std::string& filePath) {
     return buffer;
 }
 
-void loadFeatures(const std::string &pathFeatures, std::map<std::string, int> &features, int &maxFeaIdx)
+void loadFeatures(const std::string &pathFeatures,
+                  std::map<std::string, uint32_t> &features, int &maxFeaIdx)
 {
     ifstream in(pathFeatures.c_str());
     std::string line;
@@ -76,14 +77,15 @@ void loadFeatures(const std::string &pathFeatures, std::map<std::string, int> &f
             if (fields.size() < 2)
                 continue;
             std::string feaVal = fields[0];
-            int feaIdx = atoi(fields[1].c_str());
+            int feaIdx = static_cast<uint32_t>(atol(fields[1].c_str()));
             features.insert(std::make_pair(feaVal, feaIdx));
             maxFeaIdx = (feaIdx > maxFeaIdx) ? feaIdx : maxFeaIdx;
         }
     }
 }
 
-void loadInstances(std::string pathInstances, std::vector<std::vector<int> > &X, std::vector<double> &y)
+void loadInstances(std::string pathInstances,
+                   std::vector<std::vector<uint32_t> > &X, std::vector<uint8_t> &y)
 {
     ifstream in(pathInstances.c_str());
     std::string line;
@@ -98,24 +100,45 @@ void loadInstances(std::string pathInstances, std::vector<std::vector<int> > &X,
             splitString(line, "\t", fields);
             if (fields.size() < 2)
                 continue;
-            double yi = atof(fields[0].c_str());
+            uint8_t yi = static_cast<uint8_t>(atoi(fields[0].c_str()));
             y.push_back(yi);
-            std::vector<int> xi;
+            std::vector<uint32_t> xi;
             std::vector<std::string> xiFields;
             splitString(fields[1], ",", xiFields);
             for (int i = 0; i < xiFields.size(); ++i)
             {
-                xi.push_back(atoi(xiFields[i].c_str()));
+                xi.push_back(static_cast<uint32_t>(atol(xiFields[i].c_str())));
             }
             X.push_back(xi);
         }
     }
 }
 
-void outputModel(std::string pathModel, std::vector<double> &w, std::map<std::string, int> &features)
+void loadBaseModel(std::string pathModel, std::map<std::string, float> &weights) {
+    ifstream in(pathModel.c_str());
+    std::string line;
+    if (in.is_open())
+    {
+        while (in.good())
+        {
+            getline(in, line);
+            if (line.empty())
+                continue;
+            std::vector<std::string> fields;
+            splitString(line, "\t", fields);
+            if (fields.size() < 2)
+                continue;
+            float weight = static_cast<uint8_t>(atoi(fields[1].c_str()));
+            weights.insert(std::make_pair(fields[0], weight));
+        }
+    }
+}
+
+void outputModel(std::string pathModel, std::vector<float> &w,
+                 std::map<std::string, uint32_t> &features)
 {
     ofstream out(pathModel.c_str());
-    for (std::map<std::string, int>::iterator it = features.begin(); it != features.end(); ++it)
+    for (std::map<std::string, uint32_t>::iterator it = features.begin(); it != features.end(); ++it)
     {
         out << it->first << "\t" << w[it->second] << std::endl;
     }
