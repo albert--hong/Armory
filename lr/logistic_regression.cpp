@@ -25,7 +25,7 @@ using std::endl;
 // notes: 未来这些配置和方法都封装在类中 // 停止条件1  deltaLoss < epislon
 const float epislon = 1e-5;
 // 停止条件2  iter < maxIters
-const int maxIters = 5;
+const int maxIters = 20;
 // 学习率
 const float learnRate = 0.01;
 // 正则化系数 L1 系数
