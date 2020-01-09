@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <thread>
+#include <mutex>
 #include <functional>
 #include <chrono>
 
@@ -22,36 +23,20 @@ using std::endl;
 
 //////////////////// 配置项。 /////////////
 // notes: 未来这些配置和方法都封装在类中
-// 停止条件1  loss <= epsilon
-float epsilon = 1e-5;
+// 停止条件1  deltaLoss < epislon
+float epislon = 1e-5;
 // 停止条件2  iter < maxIters
-int maxIters = 100;
+int maxIters = 5;
 // 学习率
-float learnRate = 0.10;
+float learnRate = 0.01;
 // 正则化系数 L1 系数
-float lambda1 = 0.00001;
+float lambda1 = 0.01;
 // 正则化系数 L2 系数
-float lambda2 = 0.0001;
+float lambda2 = 0.01;
 // 批次大小
-int batchSize = 100;
+int batchSize = 128;
 // 并行训练的线程数
 int threadCount = 30;
-
-/**
- * 计算 Sigmoid 函数值.
- * sigmod(w, x) = 1 / (1 + exp(-w^T*x))
- */
-inline float sigmoid(std::vector<uint32_t> &x, std::vector<float> &w)
-{
-    float z = 0.0;
-    for (int i = 0; i < x.size(); ++i)
-    {
-        int xi = x[i];
-        z += w[xi];
-    } 
-    float p = static_cast<float>(1.0 / (1.0 + exp(-z))); 
-    return p;
-}
 
 /** 
  * 基于 mini-batch SGD 优化过程。线程安全，可用于并行 SGD 更新.
@@ -75,22 +60,24 @@ void LrTrainSgd(vector<vector<uint32_t> > &X,
         vector<float> updateWeight(w.size());   // 梯度更新
         vector<float> varLoss(w.size());        // mini-batch 计算出来的 delta loss 的方差，用来判断早停条件
         // 随机获取一段训练数据，计算梯度
-        uint32_t xs = rand() % X.size();
-        uint32_t miniBatchSize = (xs + batchSize < X.size()) ? batchSize : (X.size() - xs);
+        uint32_t xs = rand() % (X.size() - batchSize);
         float stopCriterion = 0.0;
         for (int xi = xs; xi < xs + batchSize && xi < X.size(); ++xi)
         {
             float y_hat = sigmoid(X[xi], w);
             float y_hat_xi = (y_hat - y[xi]);
-            for (int wi = 0; wi < w.size(); wi++) {
-                deltaLoss[wi] += y_hat_xi;
-                varLoss[wi] += (y_hat_xi * y_hat_xi);
-            }
+			for (int xj = 0; xj < X[xi].size(); ++xj) {
+				int xij = X[xi][xj]; 
+				if (xij < w.size()) {
+					deltaLoss[xij] += y_hat_xi;
+					varLoss[xij] += (y_hat_xi * y_hat_xi);
+				}
+			} // end xj
         } // end xi
         for (int wi = 0; wi < w.size(); wi++) {
-            deltaLoss[wi] /= miniBatchSize;
-            varLoss[wi] /= miniBatchSize;
-            varLoss[wi] -= deltaLoss[wi];
+            deltaLoss[wi] /= batchSize;
+            varLoss[wi] /= (batchSize - 1);
+			varLoss[wi] -= (deltaLoss[wi] * deltaLoss[wi]);
             stopCriterion += ((deltaLoss[wi] * deltaLoss[wi]) / varLoss[wi]);
             float l1Loss = w[wi] > 0 ? lambda1 : -lambda1;
             float l2Loss = 2 * lambda2 * w[wi];
@@ -100,15 +87,36 @@ void LrTrainSgd(vector<vector<uint32_t> > &X,
         // 更新模型 weight
         lockW.lock();
         // 判断早停条件
-        if (stopCriterion * miniBatchSize < w.size()) {
+        if (stopCriterion * batchSize < w.size()) {
             status = 1;
-            break;
         }
         for (int wi = 0; wi < w.size(); wi++) {
             w[wi] += updateWeight[wi];
         }
         lockW.unlock();
     } // end mini batch
+	lockW.lock();
+	status = 1;
+	lockW.unlock();
+}
+
+/**
+ * 循环输出模型
+ */
+void outputModelLoop(const char *pathModel, std::vector<float> &w,
+                 std::map<std::string, uint32_t> &features, int &status)
+{
+	while (status == 0) {
+		ofstream out(pathModel);
+		for (std::map<std::string, uint32_t>::iterator it = features.begin(); it != features.end(); ++it)
+		{
+			out << it->first << "\t" << w[it->second] << std::endl;
+		}
+		out.flush();
+		out.close();
+		sleep(60 * 0.1); 
+		//sleep(60 * 10); 
+	}
 }
 
 /**
@@ -172,7 +180,7 @@ void discreteLR(vector<vector<uint32_t> > &X, vector<uint8_t> &y, vector<float> 
                 std::cout << "training minibatch done. average delta loss = " << (avgDeltaLoss / avgDeltaLossWindow) << std::endl;
                 avgDeltaLoss = 0.0;
             }
-            if (deltaLoss < epsilon)
+            if (deltaLoss < epislon)
             {
                 return;
             }
@@ -219,8 +227,8 @@ int main(int argc, char *argv[])
     std::map<std::string, float> baseModelWeights;
     int maxFeaIdx = 0;
     loadFeatures(pathFeature, features, maxFeaIdx);         // 加载特征集合
-    loadInstances(pathBaseModel, X, y);                     // 加载训练样本
-    loadBaseModel(pathModel, baseModelWeights);             // 加载基础模型
+    loadInstances(pathInstance, X, y);                     	// 加载训练样本
+	loadBaseModel(pathBaseModel, baseModelWeights);         // 加载基础模型
 
     // 增加 Bias 特征
     int baisFeaIdx = maxFeaIdx + 1;
@@ -230,12 +238,12 @@ int main(int argc, char *argv[])
         X[xi].push_back(baisFeaIdx);
     }
     std::vector<float> weights(features.size());
-    std::cout << "weights's length = " << weights.size() << endl;
-    for (std::map<std::string, uint32_t>::iterator it; it != features.end(); ++it) {
+    for (std::map<std::string, uint32_t>::iterator it = features.begin(); it != features.end(); ++it) {
         std::string feaName = it->first;
         int feaIdx = it->second;
-        if (baseModelWeights.find(feaName) != baseModelWeights.end()) {
-            weights[feaIdx] = baseModelWeights.find(feaName)->second;
+		map<std::string, float>::iterator weightItem =  baseModelWeights.find(feaName);
+        if (weightItem != baseModelWeights.end()) {
+            weights[feaIdx] = weightItem->second;
         } else {
             weights[feaIdx] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         }
@@ -245,6 +253,7 @@ int main(int argc, char *argv[])
         << "; create weights = " << weights.size() << std::endl;
     //discreteLR(X, y, weights, features, pathModel);
     size_t miniBatchCountPerThread = (maxIters * X.size()) / (batchSize * threadCount); // 每个线程的最大循环轮次
+	cout << "miniBatchCountPerThread: " << miniBatchCountPerThread << endl;
     int status = 0;
     std::vector<std::thread*> threadPool(threadCount);                                  // 初始化线程
     std::mutex lockW;
@@ -252,7 +261,11 @@ int main(int argc, char *argv[])
         threadPool[ti] = new std::thread(std::ref(LrTrainSgd), std::ref(X), std::ref(y),
                                          std::ref(weights), std::ref(lockW), std::ref(status), miniBatchCountPerThread);
     }
+	std::thread outputThread(std::ref(outputModelLoop), pathModel, std::ref(weights), 
+			std::ref(features), std::ref(status));
     for (int ti = 0; ti < threadCount; ti++) {
         threadPool[ti]->join();
     }
+	outputThread.join();
+	outputModel(pathModel, weights, features);
 }

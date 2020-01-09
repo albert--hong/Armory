@@ -8,6 +8,8 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <algorithm>
+#include <math.h>
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -128,7 +130,7 @@ void loadBaseModel(std::string pathModel, std::map<std::string, float> &weights)
             splitString(line, "\t", fields);
             if (fields.size() < 2)
                 continue;
-            float weight = static_cast<uint8_t>(atoi(fields[1].c_str()));
+            float weight = stof(fields[1]);
             weights.insert(std::make_pair(fields[0], weight));
         }
     }
@@ -143,6 +145,22 @@ void outputModel(std::string pathModel, std::vector<float> &w,
         out << it->first << "\t" << w[it->second] << std::endl;
     }
     out.flush();
+}
+
+/**
+ * 计算 Sigmoid 函数值.
+ * sigmod(w, x) = 1 / (1 + exp(-w^T*x))
+ */
+inline float sigmoid(std::vector<uint32_t> &x, std::vector<float> &w)
+{
+    float z = 0.0;
+    for (int i = 0; i < x.size(); ++i)
+    {
+        int xi = x[i];
+        z += w[xi];
+    } 
+    float p = static_cast<float>(1.0 / (1.0 + exp(-z))); 
+    return p;
 }
 
 #endif
