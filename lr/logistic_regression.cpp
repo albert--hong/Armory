@@ -22,26 +22,25 @@ using std::cout;
 using std::endl;
 
 //////////////////// 配置项。 /////////////
-// notes: 未来这些配置和方法都封装在类中
-// 停止条件1  deltaLoss < epislon
-float epislon = 1e-5;
+// notes: 未来这些配置和方法都封装在类中 // 停止条件1  deltaLoss < epislon
+const float epislon = 1e-5;
 // 停止条件2  iter < maxIters
-int maxIters = 5;
+const int maxIters = 5;
 // 学习率
-float learnRate = 0.01;
+const float learnRate = 0.01;
 // 正则化系数 L1 系数
-float lambda1 = 0.01;
+const float lambda1 = 0.01;
 // 正则化系数 L2 系数
-float lambda2 = 0.01;
+const float lambda2 = 0.01;
 // 批次大小
-int batchSize = 128;
+const int batchSize = 128;
 // 并行训练的线程数
-int threadCount = 30;
+const int threadCount = 30;
 
 /** 
  * 基于 mini-batch SGD 优化过程。线程安全，可用于并行 SGD 更新.
  * @param vector<vector<uint32_t> > 训练样本列表
- * @param vector<float> 训练样本标签
+ * @param vector<uint8_t> 训练样本标签
  * @param vector<float> 模型参数列表
  * @param std::mutex 模型参数锁
  * @param int 最大循环次数
@@ -67,7 +66,7 @@ void LrTrainSgd(vector<vector<uint32_t> > &X,
             float y_hat = sigmoid(X[xi], w);
             float y_hat_xi = (y_hat - y[xi]);
 			for (int xj = 0; xj < X[xi].size(); ++xj) {
-				int xij = X[xi][xj]; 
+				uint32_t xij = X[xi][xj]; 
 				if (xij < w.size()) {
 					deltaLoss[xij] += y_hat_xi;
 					varLoss[xij] += (y_hat_xi * y_hat_xi);
@@ -230,6 +229,9 @@ int main(int argc, char *argv[])
     loadInstances(pathInstance, X, y);                     	// 加载训练样本
 	loadBaseModel(pathBaseModel, baseModelWeights);         // 加载基础模型
 
+	cout << "load train data finished: feature size = " << features.size()
+        << "; instances count = " << X.size() << endl;;
+
     // 增加 Bias 特征
     int baisFeaIdx = maxFeaIdx + 1;
     features.insert(std::make_pair("Bias", baisFeaIdx));
@@ -248,24 +250,26 @@ int main(int argc, char *argv[])
             weights[feaIdx] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         }
     }
-    cout << "start training: feature size = " << features.size()
-        << "; instances count = " << X.size()
+    cout << "add bias feature and create weights succeed. feature size = " << features.size()
         << "; create weights = " << weights.size() << std::endl;
     //discreteLR(X, y, weights, features, pathModel);
     size_t miniBatchCountPerThread = (maxIters * X.size()) / (batchSize * threadCount); // 每个线程的最大循环轮次
 	cout << "miniBatchCountPerThread: " << miniBatchCountPerThread << endl;
+    std::vector<std::thread*> threadPool;                                  // 初始化线程
     int status = 0;
-    std::vector<std::thread*> threadPool(threadCount);                                  // 初始化线程
     std::mutex lockW;
     for (int ti = 0; ti < threadCount; ti++) {
-        threadPool[ti] = new std::thread(std::ref(LrTrainSgd), std::ref(X), std::ref(y),
+		std::thread* trainThread = new std::thread(LrTrainSgd, std::ref(X), std::ref(y),
                                          std::ref(weights), std::ref(lockW), std::ref(status), miniBatchCountPerThread);
+		threadPool.push_back(trainThread);
     }
-	std::thread outputThread(std::ref(outputModelLoop), pathModel, std::ref(weights), 
+	std::thread outputThread(outputModelLoop, pathModel, std::ref(weights), 
 			std::ref(features), std::ref(status));
     for (int ti = 0; ti < threadCount; ti++) {
         threadPool[ti]->join();
-    }
+		delete threadPool[ti];
+		threadPool[ti] = nullptr;
+	}
 	outputThread.join();
 	outputModel(pathModel, weights, features);
 }

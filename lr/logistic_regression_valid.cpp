@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
 	// 计算 AUC
 	size_t posCount = 0;
 	size_t negCount = 0;
-	uint32_t sigmaRank = 0;
+	size_t sigmaRank = 0;
 	std::vector<LabelPair> pairs;
 	for (int xi = 0; xi < X.size(); ++xi) {
 		float label = y[xi];
@@ -79,8 +79,6 @@ int main(int argc, char *argv[])
 			sigmaRank += (pi + 1);
 		}
 	}
-	std::cout << pairs.size() << "\t" << sigmaRank << "\t" << posCount << "\t" << negCount << std::endl;
-	
 	double AUC = static_cast<double>(sigmaRank - (posCount * (posCount + 1) / 2)) / static_cast<double>(posCount * negCount);
 	printf("The AUC of lr model = %.4f\n", AUC);
 }
